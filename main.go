@@ -32,6 +32,7 @@ func main() {
 
 	reuseHandle := os.Getenv("REUSE_HANDLE") == "true"
 	keepOpen := os.Getenv("KEEP_OPEN") == "true"
+	var openFiles []*os.File // Slice to prevent GC of kept-open handles
 	totalWritten := 0
 	lastLoggedAt := 0
 	openHandles := 0
@@ -78,6 +79,7 @@ func main() {
 				continue
 			}
 			if keepOpen {
+				openFiles = append(openFiles, currF)
 				openHandles++
 			}
 		}
