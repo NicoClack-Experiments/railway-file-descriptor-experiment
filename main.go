@@ -31,11 +31,16 @@ func main() {
 	}
 
 	reuseHandle := os.Getenv("REUSE_HANDLE") == "true"
+	keepOpen := os.Getenv("KEEP_OPEN") == "true"
 	totalWritten := 0
 	lastLoggedAt := 0
+	openHandles := 0
+	if reuseHandle {
+		openHandles = 1
+	}
 	data := make([]byte, chunkSize) // Reuse buffer for efficiency
 
-	fmt.Printf("Starting writer: FILE_PATH=%s, DELAY=%dms, REUSE_HANDLE=%v\n", filePath, delayMs, reuseHandle)
+	fmt.Printf("Starting writer: FILE_PATH=%s, DELAY=%dms, REUSE_HANDLE=%v, KEEP_OPEN=%v\n", filePath, delayMs, reuseHandle, keepOpen)
 
 	var f *os.File
 	if reuseHandle {
@@ -72,25 +77,28 @@ func main() {
 				time.Sleep(time.Duration(delayMs) * time.Millisecond)
 				continue
 			}
+			if keepOpen {
+				openHandles++
+			}
 		}
 
 		n, err := currF.Write(data)
 		if err != nil {
 			log.Printf("Error writing to file: %v", err)
-			if !reuseHandle {
+			if !reuseHandle && !keepOpen {
 				currF.Close()
 			}
 			time.Sleep(time.Duration(delayMs) * time.Millisecond)
 			continue
 		}
 
-		if !reuseHandle {
+		if !reuseHandle && !keepOpen {
 			currF.Close()
 		}
 
 		totalWritten += n
 		if totalWritten-lastLoggedAt >= logEvery {
-			fmt.Printf("Total written: %d MB\n", totalWritten/(1024*1024))
+			fmt.Printf("Total written: %d MB, Open handles: %d\n", totalWritten/(1024*1024), openHandles)
 			lastLoggedAt = totalWritten
 		}
 
