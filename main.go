@@ -30,11 +30,22 @@ func main() {
 		log.Fatalf("Invalid DELAY value: %v", err)
 	}
 
+	reuseHandle := os.Getenv("REUSE_HANDLE") == "true"
 	totalWritten := 0
 	lastLoggedAt := 0
 	data := make([]byte, chunkSize) // Reuse buffer for efficiency
 
-	fmt.Printf("Starting writer: FILE_PATH=%s, DELAY=%dms\n", filePath, delayMs)
+	fmt.Printf("Starting writer: FILE_PATH=%s, DELAY=%dms, REUSE_HANDLE=%v\n", filePath, delayMs, reuseHandle)
+
+	var f *os.File
+	if reuseHandle {
+		var err error
+		f, err = os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0644)
+		if err != nil {
+			log.Fatalf("Error opening file: %v", err)
+		}
+		defer f.Close()
+	}
 
 	for {
 		// Fill buffer with random data each time
@@ -44,23 +55,38 @@ func main() {
 			continue
 		}
 
-		// Open file with O_TRUNC to overwrite each time
-		f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-		if err != nil {
-			log.Printf("Error opening file: %v", err)
-			time.Sleep(time.Duration(delayMs) * time.Millisecond)
-			continue
+		var currF *os.File
+		if reuseHandle {
+			currF = f
+			if _, err := currF.Seek(0, 0); err != nil {
+				log.Printf("Error seeking file: %v", err)
+				time.Sleep(time.Duration(delayMs) * time.Millisecond)
+				continue
+			}
+		} else {
+			var err error
+			// Open file with O_TRUNC to overwrite each time
+			currF, err = os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+			if err != nil {
+				log.Printf("Error opening file: %v", err)
+				time.Sleep(time.Duration(delayMs) * time.Millisecond)
+				continue
+			}
 		}
 
-		n, err := f.Write(data)
+		n, err := currF.Write(data)
 		if err != nil {
 			log.Printf("Error writing to file: %v", err)
-			f.Close()
+			if !reuseHandle {
+				currF.Close()
+			}
 			time.Sleep(time.Duration(delayMs) * time.Millisecond)
 			continue
 		}
 
-		f.Close()
+		if !reuseHandle {
+			currF.Close()
+		}
 
 		totalWritten += n
 		if totalWritten-lastLoggedAt >= logEvery {
