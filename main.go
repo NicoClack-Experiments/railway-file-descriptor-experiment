@@ -78,10 +78,6 @@ func main() {
 				time.Sleep(time.Duration(delayMs) * time.Millisecond)
 				continue
 			}
-			if keepOpen {
-				openFiles = append(openFiles, currF)
-				openHandles++
-			}
 		}
 
 		n, err := currF.Write(data)
@@ -94,8 +90,21 @@ func main() {
 			continue
 		}
 
-		if !reuseHandle && !keepOpen {
-			currF.Close()
+		if !reuseHandle {
+			if keepOpen {
+				openFiles = append(openFiles, currF)
+				openHandles++
+				// THE "LEAK" TRIGGER:
+				// Delete the file from the filesystem. 
+				// Because currF is still open and stored in openFiles, 
+				// the space won't be reclaimed by ZFS.
+				// Matches SQLite's behaviour?
+				if err := os.Remove(filePath); err != nil {
+					log.Printf("Error removing file: %v", err)
+				}
+			} else {
+				currF.Close()
+			}
 		}
 
 		totalWritten += n
